@@ -7,6 +7,7 @@ from urllib.request import urlretrieve
 KEYWORDS = {
     'udon': 'うどん',
     'ramen': 'ラーメン',
+    'pasta': 'パスタ',
 }
 DATASET_DIR = './dataset/'
 
