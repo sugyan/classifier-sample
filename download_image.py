@@ -22,6 +22,7 @@ class Downloader:
             media='photos',
             sort='relevance',
             safe_search=1,
+            per_page=200,
             extras='url_q,license'
         )
         return res['photos']
@@ -33,7 +34,6 @@ class Downloader:
                 filepath = os.path.join(directory, photo['id'] + '.jpg')
                 print('{:3d}: download {}'.format(i + 1, url_q))
                 urlretrieve(url_q, filepath)
-                time.sleep(0.2)
         except:
             import traceback
             traceback.print_exc()
