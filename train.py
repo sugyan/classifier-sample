@@ -7,9 +7,11 @@ from tensorflow.python.util import compat
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('dataset_dir', './dataset',
-                           '''Path to dataset directory''')
+                           '''Path to dataset directory.''')
 tf.app.flags.DEFINE_integer('batch_size', 64,
-                            '''Batch size for training''')
+                            '''Batch size for training.''')
+tf.app.flags.DEFINE_integer('training_steps', 1000,
+                            '''How many training steps to run.''')
 
 
 def create_image_lists(image_dir):
@@ -29,7 +31,7 @@ def create_image_lists(image_dir):
         for file_name in file_list:
             basename = os.path.basename(file_name)
             v = int(hashlib.sha1(compat.as_bytes(file_name)).hexdigest(), 16) % 100
-            if v < 80:
+            if v < 90:
                 training_images.append(basename)
             else:
                 testing_images.append(basename)
@@ -41,15 +43,19 @@ def create_image_lists(image_dir):
     return result
 
 
-def get_inputs(sess, image_lists, jpeg_input, distorted_image):
+def get_inputs(sess, image_lists, jpeg_input, distorted_image, category):
     class_count = len(image_lists)
-
     images = []
     labels = []
-    for _ in range(FLAGS.batch_size):
+    n = FLAGS.batch_size
+    if category == 'testing':
+        n == 0
+        for v in image_lists.values():
+            n += len(v['testing'])
+    for _ in range(n):
         label_index = random.randrange(class_count)
         dir_name = list(image_lists)[label_index]
-        basename = random.choice(image_lists[dir_name]['training'])
+        basename = random.choice(image_lists[dir_name][category])
         filepath = os.path.join(FLAGS.dataset_dir, dir_name, basename)
         if not tf.gfile.Exists(filepath):
             tf.logging.fatal('File "{}" does not exist'.format(filepath))
@@ -59,27 +65,31 @@ def get_inputs(sess, image_lists, jpeg_input, distorted_image):
     return images, labels
 
 
-def get_distorted_image():
-    jpeg_data = tf.placeholder(tf.string)
+def get_image(jpeg_data, distortion=True):
     decoded = tf.image.decode_jpeg(jpeg_data, channels=3)
     image = tf.image.per_image_standardization(decoded)
-    image = tf.random_crop(image, [64, 64, 3])
-    image = tf.image.random_flip_left_right(image)
-    image = tf.image.random_brightness(image, 0.5)
-    return jpeg_data, image
+    if distortion:
+        image = tf.random_crop(image, [64, 64, 3])
+        image = tf.image.random_flip_left_right(image)
+        image = tf.image.random_brightness(image, 0.5)
+    else:
+        image = tf.image.resize_image_with_crop_or_pad(image, 64, 64)
+    return image
 
 
-def inference(images, class_count):
-    output = tf.identity(images)
-    output = tf.layers.conv2d(output, 20, (3, 3), activation=tf.nn.relu, name='conv1')
-    output = tf.layers.max_pooling2d(output, (3, 3), (2, 2))
-    output = tf.layers.conv2d(output, 40, (3, 3), activation=tf.nn.relu, name='conv2')
-    output = tf.layers.max_pooling2d(output, (3, 3), (2, 2))
-    output = tf.layers.conv2d(output, 60, (3, 3), activation=tf.nn.relu, name='conv3')
-    output = tf.layers.max_pooling2d(output, (3, 3), (2, 2))
-    output = tf.reshape(output, [-1, 5 * 5 * 60])
-    output = tf.layers.dense(output, 30, activation=tf.nn.relu)
-    output = tf.layers.dense(output, class_count)
+def inference(images, class_count, reuse=False, training=True):
+    with tf.variable_scope('model', reuse=reuse):
+        output = tf.identity(images)
+        output = tf.layers.conv2d(output, 20, (3, 3), activation=tf.nn.relu, name='conv1')
+        output = tf.layers.max_pooling2d(output, (3, 3), (2, 2))
+        output = tf.layers.conv2d(output, 40, (3, 3), activation=tf.nn.relu, name='conv2')
+        output = tf.layers.max_pooling2d(output, (3, 3), (2, 2))
+        output = tf.layers.conv2d(output, 60, (3, 3), activation=tf.nn.relu, name='conv3')
+        output = tf.layers.max_pooling2d(output, (3, 3), (2, 2))
+        output = tf.reshape(output, [-1, 5 * 5 * 60])
+        output = tf.layers.dense(output, 30, activation=tf.nn.relu)
+        output = tf.layers.dropout(output, training=training)
+        output = tf.layers.dense(output, class_count)
     return output
 
 
@@ -94,20 +104,40 @@ def training(losses):
 
 def main(argv=None):
     image_lists = create_image_lists(FLAGS.dataset_dir)
-    jpeg_input, distorted_image = get_distorted_image()
+    class_count = len(image_lists)
+    jpeg_data = tf.placeholder(tf.string)
+    image_for_training = get_image(jpeg_data, distortion=True)
+    image_for_testing  = get_image(jpeg_data, distortion=False)
     input_images = tf.placeholder(tf.float32, shape=[None, 64, 64, 3])
-    input_labels = tf.placeholder(tf.int32, shape=[None])
-    logits = inference(input_images, len(image_lists))
-    losses = loss(input_labels, logits)
+    input_labels = tf.placeholder(tf.int64, shape=[None])
+    # for training
+    training_logits = inference(input_images, class_count)
+    losses = loss(input_labels, training_logits)
     train_op = training(losses)
+    # for testing
+    testing_logits = inference(input_images, class_count, reuse=True, training=False)
+    correct_prediction = tf.equal(tf.argmax(testing_logits, 1), input_labels)
+    accuracy = tf.reduce_mean(tf.to_float(correct_prediction))
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
 
-        for i in range(500):
-            images, labels = get_inputs(sess, image_lists, jpeg_input, distorted_image)
-            loss_value, _ = sess.run([losses, train_op], feed_dict={input_images: images, input_labels: labels})
-            print('step {:03d}: loss: {:.6f}'.format(i + 1, loss_value))
+        for i in range(FLAGS.training_steps):
+            training_images, training_labels = get_inputs(sess, image_lists, jpeg_data, image_for_training, 'training')
+            loss_value, _ = sess.run([losses, train_op], feed_dict={
+                input_images: training_images,
+                input_labels: training_labels,
+            })
+            logging_message = 'step {:03d}: loss: {:.6f}'.format(i + 1, loss_value)
+            if i % 10 == 0 or i == FLAGS.training_steps - 1:
+                testing_images, testing_labels = get_inputs(sess, image_lists, jpeg_data, image_for_testing, 'testing')
+                accuracy_value = sess.run(accuracy, feed_dict={
+                    input_images: testing_images,
+                    input_labels: testing_labels,
+                })
+                logging_message += ' (accuracy: {:.3f}%)'.format(accuracy_value * 100.0)
+            print(logging_message)
+
 
 if __name__ == '__main__':
     # tf.logging.set_verbosity(tf.logging.INFO)
