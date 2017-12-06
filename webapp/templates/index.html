@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/static/css/bootswatch.css" media="screen">
+    <title>Image Recognition</title>
+  </head>
+  <body>
+    <nav class="navbar navbar-toggleable-md navbar-inverse bg-primary">
+      <a class="navbar-brand" href="#">Noodle Recognition using TensorFlow</a>
+    </nav>
+    <div class="container" style="padding:20px 0 0 0">
+      <div class="row">
+        <div class="col col-lg-6 col-md-6 col-sm-12 col-xs-12">
+          <form method="POST" action={{ url_for('post') }} enctype="multipart/form-data">
+            <div class="input-group">
+              <span class="input-group-addon" id="selectfile">
+                <label>
+                  Choose File
+                  <input type="file" name="file" accept="image/jpeg" style="display:none", required>
+                </label>
+              </span>
+              <input type="text" class="form-control" aria-label="file" aria-describedby="selectfile">
+              <input class="btn btn-primary" type=submit value=Upload>
+            </div>
+          </form>
+          {% if file_path %}
+            <div class="card">
+              <div class="card-block">
+                <img class="img-fluid img-responsive" src="{{ file_path }}" style="width:100%">
+              </div>
+            </div>
+          {% endif %}
+        </div>
+        <div class="col col-lg-6 col-md-6 col-sm-12 col-xs-12">
+          {% if file_path %}
+            <div class="panel panel-default">
+              <div class="panel-body">
+                <table class="table">
+                  <thead class="thead-inverse">
+                    <tr>
+                      <th>Label</th>
+                      <th>Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for item in result %}
+                      <tr>
+                        <td>{{ item.name }}</td>
+                        <td>{{ item.score }} %</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+    <script>
+        $(document).on('change', ':file', function () {
+            var input = $(this),
+                numFiles = input.get(0).files ? input.get(0).files.length : 1,
+                label = input.val().replace(/\\/g, '/').replace(/.*\//, '');
+            input.parent().parent().next(':text').val(label);
+        });        
+    </script>
+  </body>
+</html>

@@ -3,11 +3,14 @@ import os
 import random
 import tensorflow as tf
 from tensorflow.python.util import compat
+from tensorflow.python.framework import graph_util
 
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('dataset_dir', './dataset',
                            '''Path to dataset directory.''')
+tf.app.flags.DEFINE_string('output_graph', './model.pb',
+                           '''File name of output graph def.''')
 tf.app.flags.DEFINE_integer('batch_size', 64,
                             '''Batch size for training.''')
 tf.app.flags.DEFINE_integer('training_steps', 1000,
@@ -17,7 +20,6 @@ tf.app.flags.DEFINE_integer('training_steps', 1000,
 def create_image_lists(image_dir):
     if not tf.gfile.Exists(image_dir):
         tf.logging.error('Image directory "{}" not found.'.format(image_dir))
-
     result = {}
     sub_dirs = [x[0] for x in tf.gfile.Walk(image_dir)]
     for sub_dir in sub_dirs[1:]:
@@ -90,7 +92,7 @@ def inference(images, class_count, reuse=False, training=True):
         output = tf.layers.dense(output, 30, activation=tf.nn.relu)
         output = tf.layers.dropout(output, training=training)
         output = tf.layers.dense(output, class_count)
-    return output
+    return tf.identity(output, name='inference')
 
 
 def loss(labels, logits):
@@ -106,9 +108,11 @@ def main(argv=None):
     image_lists = create_image_lists(FLAGS.dataset_dir)
     class_count = len(image_lists)
     jpeg_data = tf.placeholder(tf.string)
-    image_for_training = get_image(jpeg_data, distortion=True)
-    image_for_testing  = get_image(jpeg_data, distortion=False)
-    input_images = tf.placeholder(tf.float32, shape=[None, 64, 64, 3])
+    image = {
+        'training': get_image(jpeg_data, distortion=True),
+        'testing':  get_image(jpeg_data, distortion=False),
+    }
+    input_images = tf.placeholder(tf.float32, shape=[None, 64, 64, 3], name='input_images')
     input_labels = tf.placeholder(tf.int64, shape=[None])
     # for training
     training_logits = inference(input_images, class_count)
@@ -121,22 +125,24 @@ def main(argv=None):
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
-
         for i in range(FLAGS.training_steps):
-            training_images, training_labels = get_inputs(sess, image_lists, jpeg_data, image_for_training, 'training')
+            training_images, training_labels = get_inputs(sess, image_lists, jpeg_data, image['training'], 'training')
             loss_value, _ = sess.run([losses, train_op], feed_dict={
                 input_images: training_images,
                 input_labels: training_labels,
             })
-            logging_message = 'step {:03d}: loss: {:.6f}'.format(i + 1, loss_value)
+            logging_message = 'step {:3d}: loss: {:.6f}'.format(i + 1, loss_value)
             if i % 10 == 0 or i == FLAGS.training_steps - 1:
-                testing_images, testing_labels = get_inputs(sess, image_lists, jpeg_data, image_for_testing, 'testing')
+                testing_images, testing_labels = get_inputs(sess, image_lists, jpeg_data, image['testing'], 'testing')
                 accuracy_value = sess.run(accuracy, feed_dict={
                     input_images: testing_images,
                     input_labels: testing_labels,
                 })
                 logging_message += ' (accuracy: {:.3f}%)'.format(accuracy_value * 100.0)
             print(logging_message)
+        output = graph_util.convert_variables_to_constants(sess, sess.graph.as_graph_def(), ['inference_1'])
+        with open(FLAGS.output_graph, 'wb') as f:
+            f.write(output.SerializeToString())
 
 
 if __name__ == '__main__':

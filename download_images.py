@@ -22,7 +22,7 @@ class Downloader:
             media='photos',
             sort='relevance',
             safe_search=1,
-            per_page=200,
+            per_page=300,
             extras='url_q,license'
         )
         return res['photos']
