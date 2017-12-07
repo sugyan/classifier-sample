@@ -1,6 +1,5 @@
 import configparser
 import os
-import time
 from flickrapi import FlickrAPI
 from urllib.request import urlretrieve
 

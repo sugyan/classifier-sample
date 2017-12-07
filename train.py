@@ -101,7 +101,11 @@ def loss(labels, logits):
 
 
 def training(losses):
-    return tf.train.AdamOptimizer().minimize(losses)
+    train_op = tf.train.AdamOptimizer().minimize(losses)
+    ema = tf.train.ExponentialMovingAverage(0.9999)
+    with tf.control_dependencies([train_op]):
+        op = ema.apply(tf.global_variables())
+    return op
 
 
 def main(argv=None):
@@ -146,5 +150,4 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    # tf.logging.set_verbosity(tf.logging.INFO)
     tf.app.run()

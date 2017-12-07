@@ -15,7 +15,7 @@ app.recognizer = Recognizer()
 def upload_file(file):
     file_name = str(uuid.uuid4())
     file_path = os.path.join(UPLOAD_DIRECTORY, file_name)
-    print(file.save(file_path))
+    file.save(file_path)
     return file_path
 
 
@@ -28,9 +28,8 @@ def get():
 def post():
     file = request.files['file']
     file_path = upload_file(file)
-    # image_result = image_recognition(file_path)
-    app.recognizer.run(file_path)
-    return render_template('index.html', file_path=file_path)
+    result = app.recognizer.run(file_path)
+    return render_template('index.html', file_path=file_path, result=result)
 
 
 @app.route('{}/<filename>'.format(UPLOAD_DIRECTORY))

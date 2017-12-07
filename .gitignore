@@ -106,3 +106,4 @@ venv.bak/
 
 # Others
 config.ini
+model.pb
