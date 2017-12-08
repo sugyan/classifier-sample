@@ -1,0 +1,10 @@
+[Unit]
+Description=Noodle Image Recognizer
+After=syslog.target network.target auditd.service
+
+[Service]
+ExecStart=/opt/webapp/start.sh
+ExecStop=/opt/webapp/stop.sh
+
+[Install]
+WantedBy=multi-user.target

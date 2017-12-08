@@ -1,7 +1,7 @@
 import os
 import tensorflow as tf
 
-GRAPH_PATH = os.path.join(os.path.dirname(__file__), '..', 'model.pb')
+GRAPH_PATH = os.path.join(os.path.dirname(__file__), 'model.pb')
 
 
 class Recognizer:
