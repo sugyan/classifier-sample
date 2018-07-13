@@ -51,7 +51,7 @@ def get_inputs(sess, image_lists, jpeg_input, distorted_image, category):
     labels = []
     n = FLAGS.batch_size
     if category == 'testing':
-        n == 0
+        n = 0
         for v in image_lists.values():
             n += len(v['testing'])
     for _ in range(n):
